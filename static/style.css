@@ -53,9 +53,12 @@ h1 {
 /* Responsive adjustments */
 @media (max-width: 576px) {
   h1 { font-size: 1.25rem; text-align:center; }
-  .input-group { flex-direction: column; gap: .5rem; }
-  .input-group .form-control { border-radius: .35rem; }
-  .input-group .btn { border-radius: .35rem; width:100%; }
+  /* Ensure input and button stack and stretch fully on small screens */
+  .input-group { flex-direction: column !important; gap: .5rem; align-items: stretch; }
+  .input-group .form-control { border-radius: .35rem; width:100% !important; min-width: 0; box-sizing: border-box; }
+  .input-group .btn { border-radius: .35rem; width:100% !important; }
+  /* Prevent input from shrinking or collapsing inside flex containers */
+  #searchInput { min-width: 0; }
   .card-body { padding: .75rem; }
   .sub-attack h5 { font-size: 1rem; }
   .badge { font-size: .65rem; }
