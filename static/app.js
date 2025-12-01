@@ -192,3 +192,9 @@ async function search() {
 document.getElementById("searchInput").addEventListener("keypress", e => {
   if (e.key === "Enter") search();
 });
+
+// Wire the search button click without using inline event handlers (CSP-compliant)
+const searchBtn = document.getElementById('searchBtn');
+if (searchBtn) {
+  searchBtn.addEventListener('click', () => search());
+}

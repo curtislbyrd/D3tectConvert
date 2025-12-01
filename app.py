@@ -28,7 +28,7 @@ csp = {
     "script-src": ["'self'"],
     "style-src": ["'self'", "https://cdn.jsdelivr.net"],
     "img-src": ["'self'", "data:"],
-    "connect-src": ["'self'"],
+    "connect-src": ["'self'", "https://cdn.jsdelivr.net"],
     "font-src": ["'self'", "https://cdn.jsdelivr.net"]
 }
 
