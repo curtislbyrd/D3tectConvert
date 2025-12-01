@@ -48,8 +48,8 @@ limiter = Limiter(
     default_limits=["120 per minute"]
 )
 
-MAPPINGS_URL = "https://d3fend.mitre.org/api/ontology/inference/d3fend-full-mappings.json"
-MAPPINGS_FILE = "mappings.json"
+SEARCH_INDEX_FILE = os.path.join(os.path.dirname(__file__), "static", "search_index.json")
+SEARCH_DB = os.path.join(os.path.dirname(__file__), "static", "search_index.sqlite")
 
 # Progress state for mappings load (used by frontend to show a progress bar)
 # Start as not-done so the frontend will poll and pick up any upcoming download work.
@@ -60,55 +60,52 @@ mappings_progress = {
     "done": False
 }
 
-def download_mappings():
-    """Download the mappings file. This will overwrite the local file.
-
-    Returns True if a download happened, False if nothing changed.
-    """
-    print("Downloading latest D3FEND ↔ ATT&CK mappings (~25MB)...")
-    # Stream the download and update progress
-    mappings_progress.update({"phase": "downloading", "percent": 0, "message": "Downloading mappings...", "done": False})
-    response = requests.get(MAPPINGS_URL, timeout=120, stream=True)
-    response.raise_for_status()
-    total = int(response.headers.get('Content-Length') or 0)
-    downloaded = 0
-    # Write bytes to file to avoid partial decode issues
-    with open(MAPPINGS_FILE, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if not chunk:
-                continue
-            f.write(chunk)
-            downloaded += len(chunk)
-            if total:
-                pct = int(downloaded * 100 / total)
-                # Cap at 95% during download; parsing will finish the last 5%
-                mappings_progress['percent'] = min(pct * 1, 95)
-                mappings_progress['message'] = f"Downloading mappings... ({mappings_progress['percent']}%)"
-    # Ensure file is saved as text (some callers expect text file)
-    try:
-        # Re-open and re-save as UTF-8 text to be consistent with previous behavior
-        with open(MAPPINGS_FILE, "rb") as bf:
-            data_bytes = bf.read()
-        text = data_bytes.decode('utf-8')
-        with open(MAPPINGS_FILE, "w", encoding="utf-8") as tf:
-            tf.write(text)
-    except Exception:
-        # If decode fails, leave as-is; load_mappings will handle errors.
-        pass
-    mappings_progress.update({"phase": "downloaded", "percent": 95, "message": "Download complete. Parsing...", "done": False})
-    print("Download complete.")
-    return True
     
 
 def load_mappings():
-    # Only download if mappings file is missing or the environment variable
-    # TD3_FORCE_DOWNLOAD=1 is set. This avoids unconditional downloads on each run.
-    force = os.environ.get("TD3_FORCE_DOWNLOAD", "0") == "1"
-    if not os.path.exists(MAPPINGS_FILE) or force:
-        download_mappings()
+    # Primary fast-path: load from an on-disk SQLite DB created by the
+    # generator script `scripts/generate_search_db.py`. This avoids any need
+    # for `mappings.json` at runtime.
+    if os.path.exists(SEARCH_DB):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(SEARCH_DB)
+            cur = conn.cursor()
+            # fetch attacks
+            cur.execute("SELECT attack_id, attack_name FROM attacks ORDER BY attack_id")
+            rows = cur.fetchall()
+            mappings = []
+            for aid, aname in rows:
+                cur.execute("SELECT d3_id, name, type, tactic_id, url FROM d3fend WHERE attack_id = ? ORDER BY id", (aid,))
+                drows = cur.fetchall()
+                dlist = []
+                for d in drows:
+                    dlist.append({
+                        "id": d[0],
+                        "name": d[1],
+                        "type": d[2],
+                        "tactic_id": d[3] or "",
+                        "url": d[4]
+                    })
+                mappings.append({"attack_id": aid, "attack_name": aname, "d3fend": dlist})
+            conn.close()
+            mappings_progress.update({"phase": "loaded_db", "percent": 100, "message": "Loaded search DB", "done": True})
+            return mappings
+        except Exception:
+            mappings_progress.update({"phase": "db_failed", "percent": 0, "message": "Failed to load search DB; ensure it's present and valid", "done": False})
 
-    with open(MAPPINGS_FILE, "r", encoding="utf-8") as f:
-        raw_data = json.load(f)
+    # Secondary: if a compact JSON index exists, load that (backward compatible)
+    if os.path.exists(SEARCH_INDEX_FILE):
+        try:
+            mappings_progress.update({"phase": "loading_index", "percent": 100, "message": "Loaded compact search index", "done": True})
+            with open(SEARCH_INDEX_FILE, "r", encoding="utf-8") as sf:
+                return json.load(sf)
+        except Exception:
+            mappings_progress.update({"phase": "index_failed", "percent": 0, "message": "Failed to load compact index; create search DB", "done": False})
+
+    # If neither DB nor compact JSON exist, instruct operator to generate them.
+    mappings_progress.update({"phase": "missing", "percent": 0, "message": "No search DB or index found; run scripts/generate_search_db.py", "done": False})
+    return []
     # Update progress to parsing phase
     mappings_progress.update({"phase": "parsing", "percent": 0, "message": "Parsing mappings...", "done": False})
     mappings = []
@@ -290,8 +287,49 @@ def load_mappings():
     mappings_progress.update({"phase": "done", "percent": 100, "message": "Mappings ready", "done": True})
     return final_mappings
 
-# Load at startup
-mappings = load_mappings()
+# Do not load mappings at import time to keep cold-start fast.
+# Endpoints will query `static/search_index.sqlite` on demand when present.
+mappings = []
+
+def query_db_for_search(q):
+    """Query the SQLite DB for a search string or ATT&CK id.
+
+    Returns a list of mapping dicts in the same shape as the old `mappings` list.
+    """
+    try:
+        import sqlite3
+        conn = sqlite3.connect(SEARCH_DB)
+        cur = conn.cursor()
+        # If q looks like an ATT&CK id, prefer id-based matching
+        id_match = re.search(r"T\d{4}(?:\.\d{3})?", q)
+        results = []
+        if id_match:
+            qid = id_match.group(0)
+            if re.match(r"^T\d{4}$", qid):
+                # parent technique -> match exact or child subtechniques
+                cur.execute("SELECT attack_id, attack_name FROM attacks WHERE attack_id = ? OR attack_id LIKE ?", (qid, qid + '.%'))
+            else:
+                cur.execute("SELECT attack_id, attack_name FROM attacks WHERE attack_id = ?", (qid,))
+            for aid, aname in cur.fetchall():
+                cur.execute("SELECT d3_id, name, type, tactic_id, url FROM d3fend WHERE attack_id = ? ORDER BY id", (aid,))
+                drows = cur.fetchall()
+                dlist = [{"id": d[0], "name": d[1], "type": d[2], "tactic_id": d[3] or "", "url": d[4]} for d in drows]
+                results.append({"attack_id": aid, "attack_name": aname, "d3fend": dlist})
+            conn.close()
+            return results
+
+        # Otherwise treat as name substring search (case-insensitive)
+        qname = q.upper()
+        cur.execute("SELECT attack_id, attack_name FROM attacks WHERE UPPER(attack_name) LIKE ? OR attack_id LIKE ? LIMIT 500", ('%' + qname + '%', '%' + qname + '%'))
+        for aid, aname in cur.fetchall():
+            cur.execute("SELECT d3_id, name, type, tactic_id, url FROM d3fend WHERE attack_id = ? ORDER BY id", (aid,))
+            drows = cur.fetchall()
+            dlist = [{"id": d[0], "name": d[1], "type": d[2], "tactic_id": d[3] or "", "url": d[4]} for d in drows]
+            results.append({"attack_id": aid, "attack_name": aname, "d3fend": dlist})
+        conn.close()
+        return results
+    except Exception:
+        return []
 
 @app.route("/")
 def index():
@@ -299,31 +337,31 @@ def index():
 
 @app.route("/search")
 def search():
-    query = request.args.get("q", "").strip().upper()
+    query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"error": "Enter a MITRE ATT&CK ID (e.g., T1566.001)"})
 
-    # If the user pasted/selected an ID in the input, prefer that.
-    # Try to extract an ATT&CK ID from the query (e.g., T1566 or T1566.001)
-    id_match = re.search(r"T\d{4}(?:\.\d{3})?", query)
-    if id_match:
-        qid = id_match.group(0)
-        # Support parent techniques (T1566 → T1566.001 etc.)
-        if re.match(r"^T\d{4}$", qid):
-            pattern = re.compile(rf"^{re.escape(qid)}(\.\d{{3}})?$")
-        else:
-            pattern = re.compile(rf"^{re.escape(qid)}$")
-        results = [t for t in mappings if pattern.match(t["attack_id"])]
+    # Prefer DB-backed fast query when available
+    if os.path.exists(SEARCH_DB):
+        results = query_db_for_search(query)
     else:
-        # Treat query as a name search (case-insensitive substring match)
-        qname = query.upper()
-        results = [t for t in mappings if qname in (t.get("attack_name") or "").upper()]
+        # fallback to in-memory search (if a compact JSON was loaded elsewhere)
+        q = query.strip().upper()
+        id_match = re.search(r"T\d{4}(?:\.\d{3})?", q)
+        if id_match:
+            qid = id_match.group(0)
+            if re.match(r"^T\d{4}$", qid):
+                pattern = re.compile(rf"^{re.escape(qid)}(\.\d{{3}})?$")
+            else:
+                pattern = re.compile(rf"^{re.escape(qid)}$")
+            results = [t for t in mappings if pattern.match(t["attack_id"])]
+        else:
+            qname = q.upper()
+            results = [t for t in mappings if qname in (t.get("attack_name") or "").upper()]
 
     if not results:
         return jsonify({"error": f"No D3FEND correlations for '{query}'. Try an ATT&CK ID like T1566.001 or an attack name."})
 
-    # Provide `attack_matches` in the shape the frontend expects (id/name/d3fend)
-    # Build a sanitized response payload to reduce risk of reflected XSS when rendered client-side.
     attack_matches = []
     for t in results:
         safe_name = str(escape(t.get("attack_name") or t.get("attack_id")))
@@ -346,7 +384,6 @@ def search():
 
     return jsonify({
         "query": query,
-        # keep `matches` for backward compatibility, but include `attack_matches` for UI
         "matches": results,
         "attack_matches": attack_matches,
         "total_d3fend": sum(len(t["d3fend"]) for t in results)
@@ -355,6 +392,23 @@ def search():
 # Debug route (remove after testing)
 @app.route("/debug")
 def debug():
+    # Provide DB-backed debug info when possible
+    if os.path.exists(SEARCH_DB):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(SEARCH_DB)
+            cur = conn.cursor()
+            cur.execute("SELECT count(*) FROM attacks")
+            total = cur.fetchone()[0]
+            cur.execute("SELECT attack_id FROM attacks ORDER BY attack_id LIMIT 5")
+            example = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT count(*) FROM d3fend WHERE attack_id = ?", ("T1566.001",))
+            t1566 = cur.fetchone()[0] > 0
+            conn.close()
+            return jsonify({"total_loaded": total, "example_ids": example, "t1566_exists": t1566})
+        except Exception:
+            pass
+
     return jsonify({
         "total_loaded": len(mappings),
         "example_ids": [t["attack_id"] for t in mappings[:5]],
@@ -377,6 +431,24 @@ def api_attacks():
         limit = 500
 
     out = []
+    # If DB exists, query it for fast results
+    if os.path.exists(SEARCH_DB):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(SEARCH_DB)
+            cur = conn.cursor()
+            if q:
+                cur.execute("SELECT attack_id, attack_name FROM attacks WHERE attack_id LIKE ? OR UPPER(attack_name) LIKE ? LIMIT ?", ('%' + q + '%', '%' + q + '%', limit))
+            else:
+                cur.execute("SELECT attack_id, attack_name FROM attacks ORDER BY attack_id LIMIT ?", (limit,))
+            for aid, aname in cur.fetchall():
+                out.append({"id": aid, "name": aname})
+            conn.close()
+            return jsonify(out)
+        except Exception:
+            # fall through to in-memory fallback
+            pass
+
     for t in mappings:
         tid = t.get("attack_id", "")
         name = (t.get("attack_name") or "").strip()
