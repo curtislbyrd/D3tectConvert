@@ -26,7 +26,12 @@ async function populateAttacks() {
     const dl = ensureDatalist();
     // If already populated, skip
     if (dl.childElementCount > 0) return;
-    const resp = await fetch('/api/attacks?limit=500');
+    // Fetch a small, static attacks JSON (written once at startup) for fast suggestions.
+    // Falls back to the API if the static file isn't present.
+    let resp = await fetch('/static/attacks.json');
+    if (!resp.ok) {
+      resp = await fetch('/api/attacks?limit=500');
+    }
     if (!resp.ok) return;
     const items = await resp.json();
     // items are {id, name}

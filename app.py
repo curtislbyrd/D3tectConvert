@@ -224,6 +224,18 @@ def load_mappings():
 
     print(f"SUCCESS: Loaded {len(final_mappings)} unique ATT&CK techniques with D3FEND countermeasures!")
     print(f"Example: {final_mappings[0]['attack_id']} - {len(final_mappings[0]['d3fend'])} defenses" if final_mappings else "No examples found.")
+    # Write a lightweight static attacks JSON file for fast client-side suggestions.
+    # This avoids expensive runtime iteration and keeps suggestion loading instant
+    # on focus (served as a static file by Flask).
+    try:
+        attacks_list = [{"id": g.get("attack_id", ""), "name": g.get("attack_name", "")} for g in final_mappings]
+        static_path = os.path.join(os.path.dirname(__file__), "static")
+        os.makedirs(static_path, exist_ok=True)
+        with open(os.path.join(static_path, "attacks.json"), "w", encoding="utf-8") as af:
+            json.dump(attacks_list, af, ensure_ascii=False)
+    except Exception:
+        # Non-fatal: if we fail to write, client will fallback to API endpoint.
+        pass
     return final_mappings
 
 # Load at startup
