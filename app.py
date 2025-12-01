@@ -51,16 +51,50 @@ limiter = Limiter(
 MAPPINGS_URL = "https://d3fend.mitre.org/api/ontology/inference/d3fend-full-mappings.json"
 MAPPINGS_FILE = "mappings.json"
 
+# Progress state for mappings load (used by frontend to show a progress bar)
+mappings_progress = {
+    "phase": "idle",
+    "percent": 100,
+    "message": "Ready",
+    "done": True
+}
+
 def download_mappings():
     """Download the mappings file. This will overwrite the local file.
 
     Returns True if a download happened, False if nothing changed.
     """
     print("Downloading latest D3FEND ↔ ATT&CK mappings (~25MB)...")
-    response = requests.get(MAPPINGS_URL, timeout=120)
+    # Stream the download and update progress
+    mappings_progress.update({"phase": "downloading", "percent": 0, "message": "Downloading mappings...", "done": False})
+    response = requests.get(MAPPINGS_URL, timeout=120, stream=True)
     response.raise_for_status()
-    with open(MAPPINGS_FILE, "w", encoding="utf-8") as f:
-        f.write(response.text)
+    total = int(response.headers.get('Content-Length') or 0)
+    downloaded = 0
+    # Write bytes to file to avoid partial decode issues
+    with open(MAPPINGS_FILE, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            f.write(chunk)
+            downloaded += len(chunk)
+            if total:
+                pct = int(downloaded * 100 / total)
+                # Cap at 95% during download; parsing will finish the last 5%
+                mappings_progress['percent'] = min(pct * 1, 95)
+                mappings_progress['message'] = f"Downloading mappings... ({mappings_progress['percent']}%)"
+    # Ensure file is saved as text (some callers expect text file)
+    try:
+        # Re-open and re-save as UTF-8 text to be consistent with previous behavior
+        with open(MAPPINGS_FILE, "rb") as bf:
+            data_bytes = bf.read()
+        text = data_bytes.decode('utf-8')
+        with open(MAPPINGS_FILE, "w", encoding="utf-8") as tf:
+            tf.write(text)
+    except Exception:
+        # If decode fails, leave as-is; load_mappings will handle errors.
+        pass
+    mappings_progress.update({"phase": "downloaded", "percent": 95, "message": "Download complete. Parsing...", "done": False})
     print("Download complete.")
     return True
 
@@ -73,6 +107,8 @@ def load_mappings():
 
     with open(MAPPINGS_FILE, "r", encoding="utf-8") as f:
         raw_data = json.load(f)
+    # Update progress to parsing phase
+    mappings_progress.update({"phase": "parsing", "percent": 0, "message": "Parsing mappings...", "done": False})
     mappings = []
     # Try to load local D3FEND ontology dump to enrich entries with canonical D3FEND IDs
     d3_meta = {}
@@ -123,7 +159,19 @@ def load_mappings():
         # Treat raw_data as a dict of uuid->entry; build a list of entries
         bindings = [v for k, v in raw_data.items() if isinstance(v, dict)]
 
+    total_bindings = len(bindings) if bindings is not None else 0
+    processed = 0
+
     for entry in bindings:
+        # update parsing progress periodically
+        processed += 1
+        if total_bindings:
+            # weight parsing to 95-100% (download set earlier to 95%)
+            new_pct = 95 + int((processed * 5) / max(1, total_bindings))
+            # only update when percent increases to avoid excessive writes
+            if new_pct > mappings_progress.get('percent', 0):
+                mappings_progress['percent'] = new_pct
+                mappings_progress['message'] = f"Parsing mappings... ({mappings_progress['percent']}%)"
         # Prefer explicit off_tech_id (literal), otherwise try off_tech URI and extract last fragment
         off_tech_id = extract_value(entry, "off_tech_id") or extract_value(entry, "off_tech")
         if isinstance(off_tech_id, str) and "#" in off_tech_id:
