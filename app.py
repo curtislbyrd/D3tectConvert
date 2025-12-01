@@ -52,11 +52,12 @@ MAPPINGS_URL = "https://d3fend.mitre.org/api/ontology/inference/d3fend-full-mapp
 MAPPINGS_FILE = "mappings.json"
 
 # Progress state for mappings load (used by frontend to show a progress bar)
+# Start as not-done so the frontend will poll and pick up any upcoming download work.
 mappings_progress = {
     "phase": "idle",
-    "percent": 100,
-    "message": "Ready",
-    "done": True
+    "percent": 0,
+    "message": "Initializing",
+    "done": False
 }
 
 def download_mappings():
