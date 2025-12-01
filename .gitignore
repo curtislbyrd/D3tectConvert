@@ -132,4 +132,3 @@ yarn-error.log*
 
 # Optional: local virtual env named after project
 .venv/
-mappings.json
