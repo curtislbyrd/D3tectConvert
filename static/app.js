@@ -203,3 +203,54 @@ const searchBtn = document.getElementById('searchBtn');
 if (searchBtn) {
   searchBtn.addEventListener('click', () => search());
 }
+
+// Poll mappings progress endpoint and update UI
+let mappingsProgressInterval = null;
+async function fetchMappingsProgress() {
+  try {
+    const resp = await fetch('/mappings_progress');
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function updateMappingsProgressUI(progress) {
+  const wrap = document.getElementById('mappingProgressWrap');
+  const bar = document.getElementById('mappingProgressBar');
+  const text = document.getElementById('mappingProgressText');
+  const pct = document.getElementById('mappingProgressPercent');
+  if (!wrap || !bar || !text || !pct || !progress) return;
+  if (progress.done) {
+    wrap.style.display = 'none';
+    bar.style.width = '100%';
+    pct.textContent = '100%';
+    return;
+  }
+  wrap.style.display = 'block';
+  const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+  bar.style.width = percent + '%';
+  pct.textContent = percent + '%';
+  text.textContent = progress.message || 'Loading...';
+}
+
+function startMappingsProgressPolling() {
+  // Avoid duplicate intervals
+  if (mappingsProgressInterval) return;
+  mappingsProgressInterval = setInterval(async () => {
+    const p = await fetchMappingsProgress();
+    if (p) {
+      updateMappingsProgressUI(p);
+      if (p.done) {
+        clearInterval(mappingsProgressInterval);
+        mappingsProgressInterval = null;
+      }
+    }
+  }, 800);
+  // Do an immediate fetch as well
+  fetchMappingsProgress().then(p => updateMappingsProgressUI(p));
+}
+
+// Start polling when the script loads (deferred script ensures DOM exists)
+startMappingsProgressPolling();

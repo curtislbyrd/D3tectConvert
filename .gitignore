@@ -132,3 +132,4 @@ yarn-error.log*
 
 # Optional: local virtual env named after project
 .venv/
+scripts/generate_attacks_json.py
