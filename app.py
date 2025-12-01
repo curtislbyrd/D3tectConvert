@@ -97,6 +97,7 @@ def download_mappings():
     mappings_progress.update({"phase": "downloaded", "percent": 95, "message": "Download complete. Parsing...", "done": False})
     print("Download complete.")
     return True
+    
 
 def load_mappings():
     # Only download if mappings file is missing or the environment variable
@@ -284,6 +285,8 @@ def load_mappings():
     except Exception:
         # Non-fatal: if we fail to write, client will fallback to API endpoint.
         pass
+    # Mark progress as complete
+    mappings_progress.update({"phase": "done", "percent": 100, "message": "Mappings ready", "done": True})
     return final_mappings
 
 # Load at startup
@@ -384,6 +387,18 @@ def api_attacks():
             break
 
     return jsonify(out)
+
+
+@app.route("/mappings_progress")
+def mappings_progress_route():
+    """Return a small JSON object describing mapping load progress."""
+    # Copy the dict to avoid mutation while serializing
+    return jsonify({
+        "phase": mappings_progress.get("phase"),
+        "percent": mappings_progress.get("percent"),
+        "message": mappings_progress.get("message"),
+        "done": mappings_progress.get("done")
+    })
 
 if __name__ == "__main__":
     # Use env var to control debug in dev only. In production, run through gunicorn (Procfile).
