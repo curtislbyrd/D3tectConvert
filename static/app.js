@@ -223,14 +223,23 @@ function updateMappingsProgressUI(progress) {
   const pct = document.getElementById('mappingProgressPercent');
   if (!wrap || !bar || !text || !pct || !progress) return;
   if (progress.done) {
-    wrap.style.display = 'none';
-    bar.style.width = '100%';
+    // hide via class toggle (avoid inline styles)
+    wrap.classList.add('mapping-hidden');
+    if (bar.tagName && bar.tagName.toLowerCase() === 'progress') {
+      bar.value = 100;
+    }
     pct.textContent = '100%';
     return;
   }
-  wrap.style.display = 'block';
+  wrap.classList.remove('mapping-hidden');
   const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
-  bar.style.width = percent + '%';
+  // Set progress.value (no inline style) when using <progress>
+  if (bar.tagName && bar.tagName.toLowerCase() === 'progress') {
+    bar.value = percent;
+  } else {
+    // fallback: if still a div, set aria and text (avoid style changes)
+    bar.setAttribute('aria-valuenow', percent);
+  }
   pct.textContent = percent + '%';
   text.textContent = progress.message || 'Loading...';
 }

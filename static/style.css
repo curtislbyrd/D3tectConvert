@@ -64,6 +64,33 @@ h1 {
   .badge { font-size: .65rem; }
 }
 
+/* Mapping progress UI helpers */
+#mappingProgressWrap.mapping-hidden { display: none; }
+#mappingProgressWrap { display: block; }
+
+/* Style the native progress element to look like a Bootstrap progress bar */
+progress#mappingProgressBar {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 0.25rem;
+  overflow: hidden;
+  background-color: #e9ecef;
+}
+/* WebKit/Blink */
+progress#mappingProgressBar::-webkit-progress-bar {
+  background-color: #e9ecef;
+}
+progress#mappingProgressBar::-webkit-progress-value {
+  background-color: var(--deepred);
+}
+/* Firefox */
+progress#mappingProgressBar::-moz-progress-bar {
+  background-color: var(--deepred);
+}
+
+
 @media (min-width: 577px) {
   .container { max-width: 860px; }
 }
