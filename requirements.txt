@@ -1,0 +1,9 @@
+Flask==2.2.5
+requests==2.31.0
+gunicorn==20.1.0
+Flask-Talisman==1.0.0
+Flask-Limiter==2.6.0
+markupsafe==2.1.1
+
+# Optional dev/test
+pytest==7.4.0

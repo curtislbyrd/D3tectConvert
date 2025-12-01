@@ -1,0 +1,135 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+htmlcov/
+coverage.xml
+nosetests.xml
+*.cover
+*.py,cover
+
+# Flask instance folder
+instance/
+.webassets-cache
+
+# Pyenv
+.python-version
+
+# Virtualenv / environments
+env/
+venv/
+ENV/
+.venv/
+venv.bak/
+env.bak/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+
+# pyenv-virtualenv
+.python-version
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Runtime / process files
+*.pid
+*.seed
+
+# dotenv environment variables
+.env
+.env.*
+
+# Database files
+*.sqlite3
+*.db
+
+# Mypy
+.mypy_cache/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Distribution archives
+*.7z
+*.rar
+*.zip
+*.tar.gz
+
+# IDE / project settings
+.ropeproject
+.project
+
+# pipenv
+Pipfile.lock
+
+# Wheel
+*.whl
+
+# pytype
+.pytype/
+
+# Coverage and test output
+.coverage
+coverage.xml
+htmlcov/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Node / frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor swap / backup files
+*~
+*.bak
+*.swp
+
+# Optional: local virtual env named after project
+.venv/
+mappings.json
