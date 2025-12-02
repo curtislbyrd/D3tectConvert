@@ -19,7 +19,7 @@ D3fendConvert is a small, fast reference web app for mapping MITRE ATT&CK techni
 ## Quick highlights
 
 - Fast search UI and JSON API for programmatic use
-- Uses MITRE's D3FEND ↔ ATT&CK mappings (downloaded at startup when needed)
+- Uses MITRE's D3FEND ↔ ATT&CK mappings
 - Small, dependency-light Python/Flask app intended as a reference tool
 
 ## Table of contents
@@ -46,15 +46,13 @@ D3fendConvert is a small, fast reference web app for mapping MITRE ATT&CK techni
 - Flask - web framework
 - flask-talisman - security headers (CSP, HSTS when enabled)
 - flask-limiter - simple rate limiting
-- requests - HTTP for downloading the mappings file
 - markupsafe - HTML-escaping for safe output
-- Frontend: small static JS and a single `index.html` template (Bootstrap CDN for styling)
+
 
 Files of interest
 
 - `app.py` – main Flask app and search logic
-- `mappings.json` – (optional) cached copy of the D3FEND↔ATT&CK mappings
-- `static/` – frontend JS
+- `static/` – frontend JS, json files
 - `templates/index.html` – main UI
 - `requirements.txt` – Python dependencies
 
@@ -85,23 +83,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4) (Optional) Add a `.env` for development
 
-This project intentionally does not contain secrets in source. If you want signed sessions or other features that depend on Flask's `SECRET_KEY`, create a local `.env` file (the repo's `.gitignore` already ignores `.env`) and add:
-
-```env
-SECRET_KEY=your-dev-secret
-FLASK_DEBUG=1
-PORT=5000
-```
-
-Generate a secure secret locally if you need one:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(64))"
-```
-
-### 5) Run the app (development)
+### 4) Run the app (development)
 
 ```bash
 FLASK_DEBUG=1 PORT=5000 python3 app.py
@@ -109,20 +92,12 @@ FLASK_DEBUG=1 PORT=5000 python3 app.py
 
 Open `http://localhost:5000` in your browser.
 
-#### Notes about mappings
-
-The app will try to load `mappings.json` at startup. If the file is missing it will download a fresh copy from MITRE (the first run may take a minute and a few tens of MB). To force a download, set:
-
-```bash
-TD3_FORCE_DOWNLOAD=1 python3 app.py
-```
 
 ## Configuration (environment variables)
 
 - `FLASK_DEBUG` - set to `1` for development mode (disables HSTS/Talisman to avoid localhost issues)
 - `PORT` - port the server listens on (default 5000)
-- `TD3_FORCE_DOWNLOAD` - set to `1` to force re-download of the mappings file at startup
-- `SECRET_KEY` - optional; set for session signing or other features that require a secret. The project intentionally contains no secrets in source.
+
 
 ## Running in production
 
@@ -156,12 +131,6 @@ curl "http://localhost:5000/search?q=T1566.001"
 curl "http://localhost:5000/api/attacks?limit=10"
 ```
 
-## Security notes
-
-- This repository intentionally contains no embedded secrets. Do not commit a `SECRET_KEY` or other secrets into the repository. Use environment variables or a secret manager for production.
-- The app uses `flask-talisman` to add security headers (CSP/HSTS) unless `FLASK_DEBUG=1` (development) to avoid HSTS on localhost.
-- Rate limiting is provided by `flask-limiter` to reduce abuse.
-
 ## Contributing
 
 Contributions are welcome. If you want to improve the UI, add features, or wire this app to a hosted D3FEND mirror, please open an issue or a pull request. A few low-risk ideas:
@@ -170,7 +139,6 @@ Contributions are welcome. If you want to improve the UI, add features, or wire 
 - Add a small caching layer for mappings or search results
 - Add integration tests for the JSON API
 
-When contributing, please avoid committing secrets and run `flake8`/formatting on your changes if applicable.
 
 ## License
 
@@ -178,11 +146,5 @@ This project is provided under the terms of the existing `LICENSE` file in the r
 
 ---
 
-If you'd like, I can also add a short `docs/DEPLOY.md` that includes example commands for Heroku, Docker, and systemd, or add python-dotenv support for local development. Which would you prefer next?
-<p align="center">
-  <img src="images/defentory.png" alt="Defentory" width="300"/>
-  <br>
-  <em><strong>Because knowing your defenses is the new offense.</strong></em>
-</p>
 
 
